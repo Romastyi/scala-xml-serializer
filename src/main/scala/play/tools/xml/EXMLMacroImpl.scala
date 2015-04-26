@@ -21,9 +21,6 @@ object EXMLMacroImpl {
 
   def macroImpl[A, M[_]](c: Context, methodName: String, mapLikeMethod: String, reader: Boolean, writer: Boolean)(implicit atag: c.WeakTypeTag[A], matag: c.WeakTypeTag[M[A]]): c.Expr[M[A]] = {
 
-//    val nullableMethodName = s"${methodName}Nullable"
-//    val lazyMethodName = s"lazy${methodName.capitalize}"
-
     def conditionalList[T](ifReads: T, ifWrites: T): List[T] =
       (if (reader) List(ifReads) else Nil) :::
         (if (writer) List(ifWrites) else Nil)
@@ -73,7 +70,7 @@ object EXMLMacroImpl {
       case _ => None
     }
 
-//    println("Unapply return type:" + unapplyReturnTypes)
+    //    println("Unapply return type:" + unapplyReturnTypes)
 
     val applies =
       companionType.declaration(stringToTermName("apply")) match {
@@ -104,27 +101,21 @@ object EXMLMacroImpl {
       case None => c.abort(c.enclosingPosition, "No apply function found matching unapply parameters")
     }
 
-//    println("apply found:" + params)
+    //    println("apply found:" + params)
 
-    final case class Implicit(paramName: Name, paramType: Type, neededImplicit: Tree, isRecursive: Boolean, tpe: Type)
+    final case class Implicit(paramName: Name, paramType: Type, neededImplicit: Tree, tpe: Type)
 
     val createImplicit = { (name: Name, implType: c.universe.type#Type) =>
-      val (isRecursive, tpe) = implType match {
-//        case TypeRef(_, t, args) =>
-//          val isRec = args.exists(_.typeSymbol == companioned)
-//          // Option[_] needs special treatment because we need to use XXXOpt
-//          val tp = if (implType.typeConstructor <:< typeOf[Option[_]].typeConstructor) args.head else implType
-//          (isRec, tp)
-        case TypeRef(_, t, _) =>
-          (false, implType)
+      val tpe = implType match {
+        case TypeRef(_, t, _) => implType
       }
 
       // builds M implicit from expected type
       val neededImplicitType = appliedType(matag.tpe.typeConstructor, tpe :: Nil)
       // infers implicit
-//      println("need implicit: " + neededImplicitType)
+      //      println("need implicit: " + neededImplicitType)
       val neededImplicit = c.inferImplicitValue(neededImplicitType)
-      Implicit(name, implType, neededImplicit, isRecursive, tpe)
+      Implicit(name, implType, neededImplicit, tpe)
     }
 
     val applyParamImplicits = params.map { param => createImplicit(param.name, param.typeSignature) }
@@ -133,24 +124,16 @@ object EXMLMacroImpl {
       applyParamImplicits.init :+ varArgsImplicit
     } else applyParamImplicits
 
-//    println("Effective implicits: " + effectiveInferredImplicits)
+    //    println("Effective implicits: " + effectiveInferredImplicits)
 
     // if any implicit is missing, abort
-    val missingImplicits = effectiveInferredImplicits.collect { case Implicit(_, t, impl, rec, _) if (impl == EmptyTree && !rec) => t }
+    val missingImplicits = effectiveInferredImplicits.collect { case Implicit(_, t, impl, _) if impl == EmptyTree => t }
     if (missingImplicits.nonEmpty)
       c.abort(c.enclosingPosition, s"No implicit format for ${missingImplicits.mkString(", ")} available.")
 
-    val helperMember = Select(This(tpnme.EMPTY), newTermName("lazyStuff"))
-    def callHelper(target: Tree, methodName: String): Tree =
-      Apply(Select(target, newTermName(methodName)), List(helperMember))
-    def readerWriterHelper(methodName: String): List[Tree] =
-      conditionalList(readerSelect, writerSelect).map(s => callHelper(s, methodName))
-
-    var hasRec = false
-
     // combines all reads into CanBuild
     val canBuild = effectiveInferredImplicits.map {
-      case Implicit(name, t, impl, rec, tpe) =>
+      case Implicit(name, t, impl, tpe) =>
 
         // inception of (EXMLPath \ name).read(impl)
         val pathTree = Apply(
@@ -158,41 +141,17 @@ object EXMLMacroImpl {
           List(Literal(Constant(name.decoded)))
         )
 
-//        if (!rec) {
+        val callMethodName = if (tpe.typeConstructor <:< typeOf[Traversable[_]].typeConstructor)
+          s"${methodName}List"
+        else if (tpe.typeConstructor <:< typeOf[Map[_, _]].typeConstructor)
+          s"${methodName}Map"
+        else
+          methodName
 
-          val callMethodName = if (tpe.typeConstructor <:< typeOf[Traversable[_]].typeConstructor)
-            s"${methodName}List"
-          else if (tpe.typeConstructor <:< typeOf[Map[_, _]].typeConstructor)
-            s"${methodName}Map"
-          else
-            methodName
-
-          Apply(
-            Select(pathTree, newTermName(callMethodName)),
-            List(impl)
-          )
-//        } else {
-//          hasRec = true
-//          if (t.typeConstructor <:< typeOf[Option[_]].typeConstructor)
-//            Apply(
-//              Select(pathTree, newTermName(nullableMethodName)),
-//              callHelper(Apply(xmlPath, Nil), lazyMethodName) :: Nil
-//            )
-//          else {
-//            Apply(
-//              Select(pathTree, newTermName(lazyMethodName)),
-//              if (tpe.typeConstructor <:< typeOf[List[_]].typeConstructor)
-//                readerWriterHelper("list")
-//              else if (tpe.typeConstructor <:< typeOf[Set[_]].typeConstructor)
-//                readerWriterHelper("set")
-//              else if (tpe.typeConstructor <:< typeOf[Seq[_]].typeConstructor)
-//                readerWriterHelper("seq")
-//              else if (tpe.typeConstructor <:< typeOf[Map[_, _]].typeConstructor)
-//                readerWriterHelper("map")
-//              else List(helperMember)
-//            )
-//          }
-//        }
+        Apply(
+          Select(pathTree, newTermName(callMethodName)),
+          List(impl)
+        )
     }.reduceLeft { (acc, r) =>
       Apply(
         Select(acc, newTermName("and")),
@@ -245,7 +204,7 @@ object EXMLMacroImpl {
 
     val finalTree = Apply(selector, List(innerTree))
 
-//    println("finalTree: " + finalTree)
+    //    println("finalTree: " + finalTree)
 
     val importFunctionalSyntax = Import(functionalSyntaxPkg, List(ImportSelector(nme.WILDCARD, -1, null, -1)))
     val block = Block(
@@ -253,7 +212,7 @@ object EXMLMacroImpl {
       finalTree
     )
 
-//    println("block: " + block)
+    //    println("block: " + block)
 
     c.Expr[M[A]](block)
   }
