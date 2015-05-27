@@ -10,22 +10,25 @@ class EXMLFormat extends Specification {
 
   case class Foo(id: Long, name: String, age: Int, amount: Float, isX: Boolean, opt: Option[Double], numbers: List[Int], map: Map[String, Short])
   case class Bar(foo: Option[Foo])
+  case class Yup(bar: Option[List[Bar]])
 
   implicit def or[T](implicit r: XMLReader[T]) = new XMLReader[Option[T]] {
     def read(x: xml.NodeSeq): Option[Option[T]] = {
-      x.collectFirst{ case e: xml.Elem => e }.map{ e => r.read(e) }.orElse(Some(None))
+      x.collectFirst{ case e: xml.Elem => e.child }.map{ e => r.read(e) }.orElse(Some(None))
     }
   }
 
   implicit def ow[T](implicit w: XMLWriter[T]) = new XMLWriter[Option[T]] {
     def write(t: Option[T], base: xml.NodeSeq) = {
-      t.map(w.write(_, base)).getOrElse(xml.NodeSeq.Empty)
+      t.fold(xml.NodeSeq.Empty) { v =>
+        base.collectFirst{ case e: xml.Elem => e.copy(child = w.write(v, xml.NodeSeq.Empty)) }.getOrElse(xml.NodeSeq.Empty)
+      }
     }
   }
 
   "EXMLFormat" should {
 
-    val foo = Foo(1234L, "albert", 23, 123.456F, true, None, List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))
+    val foo = Foo(1234L, "albert", 23, 123.456F, isX = true, None, List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))
     val xmlFoo = <Foo>
       <id>1234</id>
       <name>albert</name>
@@ -41,8 +44,18 @@ class EXMLFormat extends Specification {
         <item><key>beta</key><value>87</value></item>
       </map>
     </Foo>
+
     val bar = Bar(Some(foo))
     val xmlBar = <Bar><foo>{ xmlFoo }</foo></Bar>
+
+    val yup = Yup(Some(List(bar, bar)))
+    val xmlYup = <Yup><bar>{ xmlBar }{ xmlBar }</bar></Yup>
+
+    val yupEmpty = Yup(Some(List()))
+    val xmlYupEmpty = <Yup><bar/></Yup>
+
+    val yupNone = Yup(None)
+    val xmlYupNone = <Yup/>
 
     "Writer" in {
 
@@ -159,6 +172,8 @@ class EXMLFormat extends Specification {
 
       implicit val b = EXML.format[Bar]
 
+      implicit val y = EXML.format[Yup]
+
       EXML.toXML(Bar(None)) must ==/(<Bar/>.toString())
 
       EXML.fromXML[Bar](<Bar/>) must equalTo(Some(Bar(None)))
@@ -170,6 +185,24 @@ class EXMLFormat extends Specification {
       EXML.fromXML[Bar](xmlBar) must equalTo(Some(bar))
 
       EXML.fromXML[Bar](EXML.toXML(bar)) must equalTo(Some(bar))
+
+      EXML.toXML(yup) must ==/(xmlYup.toString())
+
+      EXML.fromXML[Yup](xmlYup) must equalTo(Some(yup))
+
+      EXML.fromXML[Yup](EXML.toXML(yup)) must equalTo(Some(yup))
+
+      EXML.toXML(yupEmpty) must ==/(xmlYupEmpty.toString())
+
+      EXML.fromXML[Yup](xmlYupEmpty) must equalTo(Some(yupEmpty))
+
+      EXML.fromXML[Yup](EXML.toXML(yupEmpty)) must equalTo(Some(yupEmpty))
+
+      EXML.toXML(yupNone) must ==/(xmlYupNone.toString())
+
+      EXML.fromXML[Yup](xmlYupNone) must equalTo(Some(yupNone))
+
+      EXML.fromXML[Yup](EXML.toXML(yupNone)) must equalTo(Some(yupNone))
     }
   }
 }
