@@ -10,14 +10,14 @@ object XMLFormatter extends DefaultFormatters {
 
   def apply[T](reader: XMLReader[T], writer: XMLWriter[T]): XMLFormatter[T] = {
     new XMLFormatter[T] {
-      def read(x: xml.NodeSeq): Option[T] = reader.read(x)
+      def read(x: xml.NodeSeq): XMLResult[T] = reader.read(x)
       def write(t: T, base: xml.NodeSeq): xml.NodeSeq = writer.write(t, base)
     }
   }
 
   def apply[T](name: String)(implicit f: XMLFormatter[T]): XMLFormatter[T] = {
     new XMLFormatter[T] {
-      def read(x: xml.NodeSeq): Option[T] = XMLReader(name)(f).read(x)
+      def read(x: xml.NodeSeq): XMLResult[T] = XMLReader(name)(f).read(x)
       def write(t: T, base: xml.NodeSeq): xml.NodeSeq = XMLWriter(name)(f).write(t, base)
     }
   }
@@ -46,12 +46,12 @@ object OXMLFormatter extends DefaultFormatters {
 
   implicit def GenericOFormat[T](implicit f: XMLReader[T], t: OXMLWriter[T]): XMLFormatter[T] = apply(f, t)
 
-  def apply[A](read: xml.NodeSeq => Option[A], write: A => xml.NodeSeq): OXMLFormatter[A] = {
+  def apply[A](read: xml.NodeSeq => XMLResult[A], write: A => xml.NodeSeq): OXMLFormatter[A] = {
     OXMLFormatter[A](XMLReader[A](read), OXMLWriter[A](write))
   }
 
   def apply[A](r: XMLReader[A], w: OXMLWriter[A]): OXMLFormatter[A] = new OXMLFormatter[A] {
-    def read(x: xml.NodeSeq): Option[A] = r.read(x)
+    def read(x: xml.NodeSeq): XMLResult[A] = r.read(x)
 
     def write(o: A): xml.NodeSeq = w.write(o)
     def write(t: A, base: xml.NodeSeq): xml.NodeSeq = w.write(t, base)
@@ -74,7 +74,7 @@ trait DefaultFormatters {
 
   implicit def GenericFormatter[T](implicit reader: XMLReader[T], writer: XMLWriter[T]): XMLFormatter[T] = {
     new XMLFormatter[T] {
-      def read(x: xml.NodeSeq): Option[T] = reader.read(x)
+      def read(x: xml.NodeSeq): XMLResult[T] = reader.read(x)
       def write(t: T, base: xml.NodeSeq): xml.NodeSeq = writer.write(t, base)
     }
   }

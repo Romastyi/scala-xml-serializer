@@ -11,17 +11,20 @@ class ESOAPSpec extends Specification {
   case class Foo(id: Long, name: String, age: Int, amount: Float, isX: Boolean, opt: Option[Double], numbers: List[Int], map: Map[String, Short])
 
   implicit object FooXMLF extends XMLFormatter[Foo] {
-    def read(x: xml.NodeSeq): Option[Foo] = {
-      for( foo <- (x \ "foo").headOption;
-        id <- EXML.fromXML[Long](foo \ "id");
-        name <- EXML.fromXML[String](foo \ "name");
-        age <- EXML.fromXML[Int](foo \ "age");
-        amount <- EXML.fromXML[Float](foo \ "amount");
-        isX <- EXML.fromXML[Boolean](foo \ "isX");
-        opt <- EXML.fromXML[Option[Double]](foo \ "opt");
-        numbers <- EXML.fromXML[List[Int]](foo \ "numbers" \ "nb");
-        map <- EXML.fromXML[Map[String, Short]](foo \ "map" \ "item")
-      ) yield Foo(id, name, age, amount, isX, opt, numbers, map)
+    def read(x: xml.NodeSeq): XMLResult[Foo] = {
+      (for (foo <- (x \ "foo").headOption;
+        id <- EXML.fromXML[Long](foo \ "id").asOpt;
+        name <- EXML.fromXML[String](foo \ "name").asOpt;
+        age <- EXML.fromXML[Int](foo \ "age").asOpt;
+        amount <- EXML.fromXML[Float](foo \ "amount").asOpt;
+        isX <- EXML.fromXML[Boolean](foo \ "isX").asOpt;
+        opt <- EXML.fromXML[Option[Double]](foo \ "opt").asOpt;
+        numbers <- EXML.fromXML[List[Int]](foo \ "numbers" \ "nb").asOpt;
+        map <- EXML.fromXML[Map[String, Short]](foo \ "map" \ "item").asOpt
+      ) yield Foo(id, name, age, amount, isX, opt, numbers, map)) match {
+        case Some(f) => XMLSuccess(f)
+        case None => XMLError(Seq())
+      }
     }
 
     def write(f: Foo, base: xml.NodeSeq): xml.NodeSeq = {
@@ -40,7 +43,7 @@ class ESOAPSpec extends Specification {
 
   "ESOAP" should {
     "serialize SOAP" in {
-        ESOAP.toSOAP(Foo(1234L, "albert", 23, 123.456F, true, None, List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))) must ==/(
+        ESOAP.toSOAP(Foo(1234L, "albert", 23, 123.456F, isX = true, None, List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))) must ==/(
           <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:test="http://test.com/">
             <soapenv:Header/>
             <soapenv:Body>
@@ -87,7 +90,7 @@ class ESOAPSpec extends Specification {
             </map>
           </foo>
           </soapenv:Body>
-        </soapenv:Envelope>) must equalTo(Some(Foo(1234L, "albert", 23, 123.456F, true, Some(987.654), List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))))
+        </soapenv:Envelope>).asOpt must equalTo(Some(Foo(1234L, "albert", 23, 123.456F, isX = true, Some(987.654), List(123, 57), Map("alpha" -> 23.toShort, "beta" -> 87.toShort))))
     }
 
     "deserialize SOAP to None if error" in {
@@ -97,7 +100,7 @@ class ESOAPSpec extends Specification {
             <age>fd</age>
             <amount>float</amount>
             <isX>true</isX>
-          </foo>) must equalTo(None)
+          </foo>).asOpt must equalTo(None)
     }
 
     "deserialize SOAP fault that it previously generated" in {
@@ -110,7 +113,7 @@ class ESOAPSpec extends Specification {
           )
         )
       val fault = ESOAP.fromSOAP[SoapFault[String]](savon)
-      fault must beSome
+      fault.asOpt must beSome
       fault.get.faultcode must equalTo(SoapFault.FAULTCODE_SERVER)
       fault.get.faultstring must equalTo("Super error")
     }
@@ -128,7 +131,7 @@ class ESOAPSpec extends Specification {
           </soapenv:Body>
         </soapenv:Envelope>
       val res = ESOAP.fromSOAP[SoapFault[String]](soapMessage)
-      res must beNone
+      res.asOpt must beNone
     }
     "return None if faultstring parameter is missing" in {
       val soapMessage = <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://interfacedepot.acsia.gip_info_retraite.fr/types/">
@@ -143,7 +146,7 @@ class ESOAPSpec extends Specification {
           </soapenv:Body>
         </soapenv:Envelope>
       val res = ESOAP.fromSOAP[SoapFault[String]](soapMessage)
-      res must beNone
+      res.asOpt must beNone
     }
     "return None if faultactor parameter is missing" in {
       val soapMessage = <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://interfacedepot.acsia.gip_info_retraite.fr/types/">
@@ -158,7 +161,7 @@ class ESOAPSpec extends Specification {
           </soapenv:Body>
         </soapenv:Envelope>
       val res = ESOAP.fromSOAP[SoapFault[String]](soapMessage)
-      res must beNone
+      res.asOpt must beNone
     }
     "return None if detail parameter is missing" in {
       val soapMessage = <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://interfacedepot.acsia.gip_info_retraite.fr/types/">
@@ -171,19 +174,21 @@ class ESOAPSpec extends Specification {
           </soapenv:Body>
         </soapenv:Envelope>
       val res = ESOAP.fromSOAP[SoapFault[String]](soapMessage)
-      res must beNone
+      res.asOpt must beNone
     }
 
     "deserialize SOAP fault generated by third party" in {
       case class ComplexObject(param1 : String, param2: String)
       implicit object ComplexObjectReader extends XMLReader[ComplexObject] {
-        def read(x : xml.NodeSeq) : Option[ComplexObject] = {
-          for( msg <- (x \ "message").headOption; 
-               param1 <- EXML.fromXML[String](msg \ "param1"); 
-               param2 <- EXML.fromXML[String](msg \ "param2")  
-               )
-            yield ComplexObject(param1, param2)
-        }        
+        def read(x: xml.NodeSeq): XMLResult[ComplexObject] = {
+          (for (msg <- (x \ "message").headOption;
+                param1 <- EXML.fromXML[String](msg \ "param1").asOpt;
+                param2 <- EXML.fromXML[String](msg \ "param2").asOpt
+          ) yield ComplexObject(param1, param2)) match {
+            case Some(f) => XMLSuccess(f)
+            case None => XMLError(Seq())
+          }
+        }
       }
 
       val soapMessage = <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://interfacedepot.acsia.gip_info_retraite.fr/types/">
@@ -203,7 +208,7 @@ class ESOAPSpec extends Specification {
         </soapenv:Envelope>
 
       val fault = ESOAP.fromSOAP[SoapFault[ComplexObject]](soapMessage)
-      fault must beSome
+      fault.asOpt must beSome
       fault.get.faultcode must equalTo("1")
       fault.get.detail.param1 must equalTo("Textual informations")
       fault.get.detail.param2 must equalTo("More informations")

@@ -13,8 +13,13 @@ class EXMLFormat extends Specification {
   case class Yup(bar: Option[List[Bar]])
 
   implicit def or[T](implicit r: XMLReader[T]) = new XMLReader[Option[T]] {
-    def read(x: xml.NodeSeq): Option[Option[T]] = {
-      x.collectFirst{ case e: xml.Elem => e.child }.map{ e => r.read(e) }.orElse(Some(None))
+    def read(x: xml.NodeSeq): XMLResult[Option[T]] = {
+      x.collectFirst { case e: xml.Elem => e.child }.map { e =>
+        r.read(e) match {
+          case XMLSuccess(v, p) => XMLSuccess(Some(v), p)
+          case e: XMLError => e
+        }
+      }.getOrElse(XMLSuccess(None))
     }
   }
 
@@ -100,7 +105,7 @@ class EXMLFormat extends Specification {
           ).apply(Foo.apply _))
       }
 
-      EXML.fromXML[Foo](xmlFoo) must equalTo(Some(foo))
+      EXML.fromXML[Foo](xmlFoo).asOpt must equalTo(Some(foo))
     }
 
     "Reader (macro)" in {
@@ -110,7 +115,7 @@ class EXMLFormat extends Specification {
         EXML.reader[Foo]
       }
 
-      EXML.fromXML[Foo](xmlFoo) must equalTo(Some(foo))
+      EXML.fromXML[Foo](xmlFoo).asOpt must equalTo(Some(foo))
     }
 
     "Formatter" in {
@@ -130,9 +135,9 @@ class EXMLFormat extends Specification {
 
       EXML.toXML(foo) must ==/(xmlFoo.toString())
 
-      EXML.fromXML[Foo](xmlFoo) must equalTo(Some(foo))
+      EXML.fromXML[Foo](xmlFoo).asOpt must equalTo(Some(foo))
 
-      EXML.fromXML[Foo](EXML.toXML(foo)) must equalTo(Some(foo))
+      EXML.fromXML[Foo](EXML.toXML(foo)).asOpt must equalTo(Some(foo))
     }
 
     "Formatter (macro)" in {
@@ -144,9 +149,9 @@ class EXMLFormat extends Specification {
 
       EXML.toXML(foo) must ==/(xmlFoo.toString())
 
-      EXML.fromXML[Foo](xmlFoo) must equalTo(Some(foo))
+      EXML.fromXML[Foo](xmlFoo).asOpt must equalTo(Some(foo))
 
-      EXML.fromXML[Foo](EXML.toXML(foo)) must equalTo(Some(foo))
+      EXML.fromXML[Foo](EXML.toXML(foo)).asOpt must equalTo(Some(foo))
     }
 
     "List (macro)" in {
@@ -158,9 +163,9 @@ class EXMLFormat extends Specification {
 
       <list>{ EXML.toXML(List(foo, foo)) }</list> must ==/(<list>{ xmlFoo }{ xmlFoo }</list>.toString())
 
-      EXML.fromXML[List[Foo]](<list>{ xmlFoo }{ xmlFoo }</list>.child) must equalTo(Some(List(foo, foo)))
+      EXML.fromXML[List[Foo]](<list>{ xmlFoo }{ xmlFoo }</list>.child).asOpt must equalTo(Some(List(foo, foo)))
 
-      EXML.fromXML[List[Foo]](<list>{ EXML.toXML(List(foo, foo)) }</list>.child) must equalTo(Some(List(foo, foo)))
+      EXML.fromXML[List[Foo]](<list>{ EXML.toXML(List(foo, foo)) }</list>.child).asOpt must equalTo(Some(List(foo, foo)))
     }
 
     "Nested classes (macro)" in {
@@ -176,33 +181,33 @@ class EXMLFormat extends Specification {
 
       EXML.toXML(Bar(None)) must ==/(<Bar/>.toString())
 
-      EXML.fromXML[Bar](<Bar/>) must equalTo(Some(Bar(None)))
+      EXML.fromXML[Bar](<Bar/>).asOpt must equalTo(Some(Bar(None)))
 
-      EXML.fromXML[Bar](EXML.toXML(Bar(None))) must equalTo(Some(Bar(None)))
+      EXML.fromXML[Bar](EXML.toXML(Bar(None))).asOpt must equalTo(Some(Bar(None)))
 
       EXML.toXML(bar) must ==/(xmlBar.toString())
 
-      EXML.fromXML[Bar](xmlBar) must equalTo(Some(bar))
+      EXML.fromXML[Bar](xmlBar).asOpt must equalTo(Some(bar))
 
-      EXML.fromXML[Bar](EXML.toXML(bar)) must equalTo(Some(bar))
+      EXML.fromXML[Bar](EXML.toXML(bar)).asOpt must equalTo(Some(bar))
 
       EXML.toXML(yup) must ==/(xmlYup.toString())
 
-      EXML.fromXML[Yup](xmlYup) must equalTo(Some(yup))
+      EXML.fromXML[Yup](xmlYup).asOpt must equalTo(Some(yup))
 
-      EXML.fromXML[Yup](EXML.toXML(yup)) must equalTo(Some(yup))
+      EXML.fromXML[Yup](EXML.toXML(yup)).asOpt must equalTo(Some(yup))
 
       EXML.toXML(yupEmpty) must ==/(xmlYupEmpty.toString())
 
-      EXML.fromXML[Yup](xmlYupEmpty) must equalTo(Some(yupEmpty))
+      EXML.fromXML[Yup](xmlYupEmpty).asOpt must equalTo(Some(yupEmpty))
 
-      EXML.fromXML[Yup](EXML.toXML(yupEmpty)) must equalTo(Some(yupEmpty))
+      EXML.fromXML[Yup](EXML.toXML(yupEmpty)).asOpt must equalTo(Some(yupEmpty))
 
       EXML.toXML(yupNone) must ==/(xmlYupNone.toString())
 
-      EXML.fromXML[Yup](xmlYupNone) must equalTo(Some(yupNone))
+      EXML.fromXML[Yup](xmlYupNone).asOpt must equalTo(Some(yupNone))
 
-      EXML.fromXML[Yup](EXML.toXML(yupNone)) must equalTo(Some(yupNone))
+      EXML.fromXML[Yup](EXML.toXML(yupNone)).asOpt must equalTo(Some(yupNone))
     }
   }
 }

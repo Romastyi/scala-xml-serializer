@@ -8,6 +8,8 @@ case class EXMLPath(base: xml.NodeSeq, path: String = "") {
 
   def \(name: String): EXMLPath = EXMLPath(base, name)
 
+  override def toString = "/" + path
+
   def format[T](implicit f: XMLFormatter[T]): OXMLFormatter[T] = OXMLFormatter.at[T](this)
   def formatList[T <: Traversable[_]](implicit f: XMLFormatter[T]): OXMLFormatter[T] = OXMLFormatter.atList[T](this)
   def formatMap[T <: Map[_, _]](implicit f: XMLFormatter[T]): OXMLFormatter[T] = OXMLFormatter.atMap[T](this)
